@@ -1,0 +1,717 @@
+Flask app codes	import pandas as pd
+import joblib
+from flask import Flask, render_template, request
+
+app = Flask(__name__)
+
+# Load the trained SVM models for each time point
+svm_model_3_month = joblib.load('svm_3_month.pkl')
+svm_model_1_year = joblib.load('svm_12_month.pkl')
+svm_model_3_years = joblib.load('svm_36_month.pkl')
+
+# Define a function to predict mortality risk for a given patient
+def predict_mortality(patient_data):
+    patient_data_dict = {
+        'age': [patient_data['age']],
+        'sex': [patient_data['sex']],
+        'ethnicity': [patient_data['ethnicity']],
+        'dm': [patient_data['dm']],
+        'hpt': [patient_data['hpt']],
+        'ckd': [patient_data['ckd']],
+        'af': [patient_data['af']],
+        'hf_ihd': [patient_data['hf_ihd']],
+        'lipid': [patient_data['lipid']],
+        'smoke': [patient_data['smoke']],
+        'gcs_reduct': [patient_data['gcs_reduct']],
+        'nihss': [patient_data['nihss']]
+    }
+    patient_data_df = pd.DataFrame(patient_data_dict)
+
+    probability_3_month = abs(svm_model_3_month.predict(patient_data_df)[0]) * 100  # Convert to percentage
+    probability_1_year = abs(svm_model_1_year.predict(patient_data_df)[0]) * 100    # Convert to percentage
+    probability_3_years = abs(svm_model_3_years.predict(patient_data_df)[0]) * 100  # Convert to percentage
+
+    return probability_3_month, probability_1_year, probability_3_years
+
+@app.route('/', methods=['GET', 'POST'])
+def home():
+    risk_3_month = None
+    risk_1_year = None
+    risk_3_years = None
+
+    if request.method == 'POST':
+        # Get patient data from the form
+        patient_data = {
+            'age': float(request.form['age']),
+            'sex': int(request.form['sex']),
+            'ethnicity': int(request.form['ethnicity']),
+            'dm': int(request.form['dm']),
+            'hpt': int(request.form['hpt']),
+            'ckd': int(request.form['ckd']),
+            'af': int(request.form['af']),
+            'hf_ihd': int(request.form['hf_ihd']),
+            'lipid': int(request.form['lipid']),
+            'smoke': int(request.form['smoke']),
+            'gcs_reduct': int(request.form['gcs_reduct']),
+            'nihss': int(request.form['nihss'])
+        }
+
+        # Predict mortality risk
+        risk_3_month, risk_1_year, risk_3_years = predict_mortality(patient_data)
+
+    # Make sure risk values are not None
+    risk_3_month = risk_3_month or 0.0
+    risk_1_year = risk_1_year or 0.0
+    risk_3_years = risk_3_years or 0.0
+
+    return render_template('base.html', risk_3_month=risk_3_month, risk_1_year=risk_1_year, risk_3_years=risk_3_years)
+
+@app.route('/about/')
+def about():
+    return render_template('about.html')
+
+@app.route('/contact/')
+def contact():
+    return render_template('contact.html')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+Base.html template	<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-KyZXEAg3QhqLMpG8r+8fhAXLRk2vvoC2f3B09zVXn8CA5QIVfZOJ3BCsw2P0p/We" crossorigin="anonymous">
+
+    <!-- Custom CSS -->
+    <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* CSS for interpretation charts */
+        .interpretation-charts {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .interpretation-chart {
+            border: 1px solid #ccc;
+            padding: 10px;
+            text-align: center;
+            width: 30%;
+        }
+
+        .interpretation-meter {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+
+        .indicator {
+            width: 30%;
+            color: white;
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        /* Define colors for different risk levels */
+        .low-risk {
+            background-color: green;
+        }
+
+        .moderate-risk {
+            background-color: orange;
+        }
+
+        .high-risk {
+            background-color: red;
+        }
+
+        .toggle-content {
+            display: none;
+            height: 0;
+            overflow: hidden;
+            transition: height 350ms ease-in-out;
+        }
+
+        .toggle-content.is-visible {
+            display: block;
+            height: auto;
+        }
+
+        .mobile-menu.is-visible {
+            display: block;
+            height: auto;
+            position: relative;
+        }
+
+        .menu-button.is-hidden {
+            display: none;
+            height: 0;
+            overflow: hidden;
+            transition: height 350ms ease-in-out;
+
+        }
+
+        #menu {
+            z-index: 1;
+            min-width: 100%;
+            min-height: 100%;
+            position: fixed;
+            top: 0;
+            height: 0;
+            visibility: hidden;
+            opacity: 0;
+            text-align: center;
+            padding-top: 20px;
+            transition: all 0.3s ease-in-out;
+
+        }
+
+        #burger-menu {
+            cursor: pointer;
+            height: 27px;
+            width: 27px;
+            margin-inline-end: 50px;
+            overflow: visible;
+            position: relative;
+            z-index: 2;
+        }
+
+        #burger-menu span,
+        #burger-menu span:before,
+        #burger-menu span:after {
+            background: #242121;
+            display: block;
+            height: 4px;
+            opacity: 1;
+            position: absolute;
+            transition: 0.3s ease-in-out;
+        }
+
+        #burger-menu span:before,
+        #burger-menu span:after {
+            content: "";
+        }
+
+        #burger-menu span {
+            right: 0px;
+            top: 13px;
+            width: 27px;
+        }
+
+        #burger-menu span:before {
+            left: 0px;
+            top: -10px;
+            width: 16px;
+        }
+
+        #burger-menu span:after {
+            left: 0px;
+            top: 10px;
+            width: 20px;
+        }
+
+        #burger-menu.close span {
+            transform: rotate(-45deg);
+            top: 13px;
+            width: 27px;
+        }
+
+        #burger-menu.close span:before {
+            top: 0px;
+            transform: rotate(90deg);
+            width: 27px;
+        }
+
+        #burger-menu.close span:after {
+            top: 0px;
+            left: 0;
+            transform: rotate(90deg);
+            opacity: 0;
+            width: 0;
+        }
+
+        #menu {
+            z-index: 1;
+            min-width: 100%;
+            min-height: 100%;
+            position: fixed;
+            top: 0;
+            height: 0;
+            visibility: hidden;
+            opacity: 0;
+            text-align: center;
+            padding-top: 20px;
+            transition: all 0.3s ease-in-out;
+
+        }
+
+        #menu.overlay {
+            visibility: visible;
+            opacity: 1;
+            padding-top: 100px;
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        #menu li {
+            list-style: none;
+        }
+
+        #menu a {
+            color: #fff;
+            display: block;
+            font-size: 32px;
+            margin-bottom: 30px;
+            text-decoration: none;
+        }
+    </style>
+    <title>{% block title %} {% endblock %}</title>
+</head>
+
+<body>
+    <div id="app.container">
+        <nav class="navbar navbar-expand-lg navbar-light bg-light">
+            <div class="p-3 flex">
+                <!-- burger menu -->
+                <div class="flex items-center ml-32 sm:hidden space-x-6">
+                    <button class=" md:hidden lg:hidden mb-3 mt-4 flex items-center " id="burger-menu">
+                        <span class="navbar-toggler-icon text-xl "></span>
+                    </button>
+
+                </div>
+            </div>
+
+            <!-- mobile-menu -->
+            <div id="menu">
+                <ul>
+                    <li><a class="nav-link" href="{{ url_for('home') }}">Home</a></li>
+                    <li><a class="nav-link" href="{{ url_for('about') }}">About</a></li>
+                    <li><a class="nav-link" href="{{ url_for('contact') }}">Contact</a></li>
+                </ul>
+            </div>
+            <!-- navbar -->
+            <div class="hidden md:flex lg:flex lg:justify-center xl:flex 2xl:flex ">
+                <span>
+                    <a class="nav-link text-xl" href="{{ url_for('home') }}">Home</a>
+                </span>
+                <span>
+                    <a class="nav-link text-xl" href="{{ url_for('about') }}">About</a>
+                </span>
+                <span>
+                    <a class="nav-link text-xl" href="{{ url_for('contact') }}">Contact</a>
+                </span>
+            </div>
+        </nav>
+        <div class="container">
+            {% block content %}
+<!-- Sidebar code -->
+<div class="container">
+    <div class="flex flex-row-reverse">
+        <!-- Sidebar -->
+        <div class="w-1/4 p-4 bg-gray-200">
+            <!-- Logo -->
+            <div class="text-center mb-4">
+                <img src="{{ url_for('static', filename='MISTlogo.png') }}" alt="Logo" class="w-64 h-64 mx-auto">
+            </div>
+            <!-- When to use button -->
+            <button class="w-full py-2 text-left hover:bg-gray-300 focus:bg-gray-300" onmouseover="showExplanation('whenToUse')" onmouseout="hideExplanation('whenToUse')">
+                <span class="text-lg font-semibold">When to Use</span>
+            </button>
+            <!-- When to use text (hidden by default) -->
+            <div id="whenToUse" class="hidden mt-2 explanation-text">
+                MIST can assist physicians in predicting the risk of mortality at 3 months, 1 year, and 3 years in patients who have suffered an ischemic stroke.
+            </div>
+
+            <!-- How to use button -->
+            <button class="w-full py-2 text-left hover:bg-gray-300 focus:bg-gray-300 mt-4" onmouseover="showExplanation('howToUse')" onmouseout="hideExplanation('howToUse')">
+                <span class="text-lg font-semibold">How to Use</span>
+            </button>
+            <!-- How to use text (hidden by default) -->
+            <div id="howToUse" class="hidden mt-2 explanation-text">
+                To use MIST, input patient data for each variable and click the "Predict" button for the prediction result.
+            </div>
+
+            <!-- Result interpretation button -->
+            <button class="w-full py-2 text-left hover:bg-gray-300 focus:bg-gray-300 mt-4" onmouseover="showExplanation('resultInterpretation')" onmouseout="hideExplanation('resultInterpretation')">
+                <span class="text-lg font-semibold">Result Interpretation</span>
+            </button>
+            <!-- Result interpretation text (hidden by default) -->
+            <div id="resultInterpretation" class="hidden mt-2 explanation-text">
+                The prediction result is categorized into three risk levels: low risk (green), moderate risk (yellow), and high risk (red). For instance, a risk of 25.50% at 3 months indicates that the patient has a 25.50% mortality risk after experiencing an ischemic stroke.
+            </div>
+
+            <!-- Disclaimer button -->
+            <button class="w-full py-2 text-left hover:bg-gray-300 focus:bg-gray-300 mt-4" onmouseover="showExplanation('disclaimer')" onmouseout="hideExplanation('disclaimer')">
+                <span class="text-lg font-semibold">Disclaimer</span>
+            </button>
+            <!-- Disclaimer text (hidden by default) -->
+            <div id="disclaimer" class="hidden mt-2 explanation-text">
+                The information presented on this website is intended for informational purposes exclusively and forms a component of an ongoing research project that has not yet received endorsement from any medical professional body. It should be clearly understood that this information is not intended to replace or supersede clinical judgment or provide guidance for individual patient care in any capacity. Any decisions made or actions taken by users of this website based on the content within are solely the responsibility of the user. It is important to note that neither the researchers, authors, nor any other party involved in the development and dissemination of this website shall bear liability for any consequential damages resulting from the utilization of the information provided herein.
+            </div>
+        </div>
+
+        <!-- Main content (3/4 of the layout) -->
+        <div class="w-3/4 p-4">
+            <!-- Your existing content here -->
+
+            <div id="prediction" class="p-3">
+                <h1 class="text-center text-4xl font-bold py-5">Malaysian Ischemic Stroke Mortality Prediction Tool (MIST)</h1>
+                <form action="/" method="post" class="p-2">
+                    <!-- Age -->
+                    <div class="mb-3">
+                        <label for="age" class="form-label text-xl py-2 font-bold">Age in years:</label>
+                        <input type="number" class="form-control rounded-xl" name="age" required>
+                        <div class="text-sm italic text-gray-600">
+                            (Must be 18 years old or older)
+                        </div>
+                    </div>
+                    <!-- Sex -->
+                    <div class="mb-3">
+                        <label for="sex" class="form-label text-xl py-2 font-bold">Sex:</label>
+                        <select class="form-select rounded-xl" name="sex" required>
+                            <option value="0">Male</option>
+                            <option value="1">Female</option>
+                        </select>
+                    </div>
+                    <!-- Ethnicity -->
+                    <div class="mb-3">
+                        <label for="ethnicity" class="form-label text-xl py-2 font-bold">Ethnicity:</label>
+                        <select class="form-select rounded-xl" name="ethnicity" required>
+                            <option value="1">Malay</option>
+                            <option value="2">Chinese</option>
+                            <option value="3">Indian</option>
+                            <option value="4">Others</option>
+                        </select>
+                    </div>
+                    <!-- Diabetes (DM) -->
+                    <div class="mb-3">
+                        <label for="dm" class="form-label text-xl py-2 font-bold">Diabetes mellitus (DM):</label>
+                        <select class="form-select rounded-xl" name="dm" required>
+                            <option value="0">No</option>
+                            <option value="1">Yes</option>
+                        </select>
+                    </div>
+                    <!-- Hypertension (HPT) -->
+                    <div class="mb-3">
+                        <label for="hpt" class="form-label text-xl py-2 font-bold">Hypertension (HPT):</label>
+                        <select class="form-select rounded-xl" name="hpt" required>
+                            <option value="0">No</option>
+                            <option value="1">Yes</option>
+                        </select>
+                    </div>
+                    <!-- Chronic Kidney Disease (CKD) -->
+                    <div class="mb-3">
+                        <label for="ckd" class="form-label text-xl py-2 font-bold">Chronic Kidney Disease (CKD):</label>
+                        <select class="form-select rounded-xl" name="ckd" required>
+                            <option value="0">No</option>
+                            <option value="1">Yes</option>
+                        </select>
+                    </div>
+                    <!-- Atrial Fibrillation (AF) -->
+                    <div class="mb-3">
+                        <label for="af" class="form-label text-xl py-2 font-bold">Atrial Fibrillation (AF):</label>
+                        <select class="form-select rounded-xl" name="af" required>
+                            <option value="0">No</option>
+                            <option value="1">Yes</option>
+                        </select>
+                    </div>
+                    <!-- Heart Disease -->
+                    <div class="mb-3">
+                        <label for="hf_ihd" class="form-label text-xl py-2 font-bold mt-2">Heart Disease:</label>
+                        <select class="form-select rounded-xl" name="hf_ihd" required>
+                            <option value="0">No</option>
+                            <option value="1">Yes</option>
+                        </select>
+                        <div class="text-sm italic text-gray-600">
+                            (History of acute coronary disease or heart failure)
+                        </div>
+                    </div>
+                    <!-- Hyperlipidemia (HPL) -->
+                    <div class="mb-3">
+                        <label for="lipid" class="form-label text-xl py-2 font-bold">Hyperlipidemia (HPL):</label>
+                        <select class="form-select rounded-xl" name="lipid" required>
+                            <option value="0">No</option>
+                            <option value="1">Yes</option>
+                        </select>
+                    </div>
+                    <!-- Smoking status -->
+                    <div class="mb-3">
+                        <label for="smoke" class="form-label text-xl py-2 font-bold">Smoking status (current):</label>
+                        <select class="form-select rounded-xl" name="smoke" required>
+                            <option value="0">No</option>
+                            <option value="1">Yes</option>
+                        </select>
+                    </div>
+                    <!-- GCS reduction (0-12) -->
+                    <div class="mb-3">
+                        <label for="gcs_reduct" class="form-label text-xl py-2 font-bold">Glasgow Coma Scale reduction (0-12):</label>
+                        <input type="number" class="form-control rounded-xl" name="gcs_reduct" required>
+                    </div>
+                    <!-- NIHSS -->
+                    <div class="mb-3">
+                        <label for="nihss" class="form-label text-xl py-2 font-bold">National Institute of Health Stroke Scale:</label>
+                        <select class="form-select rounded-xl" name="nihss" required>
+                            <option value="1">No stroke symptoms (0)</option>
+                            <option value="2">Minor stroke (1-4)</option>
+                            <option value="3">Moderate stroke (5-15)</option>
+                            <option value="4">Moderate to severe stroke (16-20)</option>
+                            <option value="5">Severe stroke (21-42)</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary bg-primary shadow-md">Predict</button>
+                </form>
+
+                <!-- Interpretation charts -->
+                <div class="justify-center mt-5">
+                    <div
+                        class=" ">
+                        <div class=" rounded-xl shadow-md p-3 mt-4 border border-gray-300">
+                            <h3 class="text-xl font-semibold">Risk at 3 month:</h3>
+                            <p>Stroke Mortality Probability (%): {{ risk_3_month|default(0)|round(2) }}</p>
+                            <div class="interpretation-meter items-center justify-center py-4 text-center">
+                                {% if risk_3_month is not none %}
+                                <div
+                                    class="indicator {% if risk_3_month <= 30 %}low-risk{% elif risk_3_month <= 60 %}moderate-risk{% else %}high-risk{% endif %}">
+                                    {% if risk_3_month <= 30 %}Low Risk{% elif risk_3_month <=60 %}Moderate Risk{% else %}High
+                                        Risk{% endif %} </div>
+                                        {% endif %}
+                                </div>
+                            </div>
+
+                            <div class=" rounded-xl shadow-md p-3 mt-4 border border-gray-300">
+                                <h3 class="text-xl font-semibold">Risk at 1 year:</h3>
+                                <p>Stroke Mortality Probability (%): {{ risk_1_year|default(0)|round(2) }}</p>
+                                <div class="interpretation-meter items-center justify-center py-4 text-center">
+                                    {% if risk_1_year is not none %}
+                                    <div
+                                        class="indicator {% if risk_1_year <= 30 %}low-risk{% elif risk_1_year <= 60 %}moderate-risk{% else %}high-risk{% endif %}">
+                                        {% if risk_1_year <= 30 %}Low Risk{% elif risk_1_year <=60 %}Moderate Risk{% else
+                                            %}High Risk{% endif %} </div>
+                                            {% endif %}
+                                    </div>
+                                </div>
+
+                                <div class=" rounded-xl shadow-md p-3 mt-4 border border-gray-300">
+                                    <h3 class="text-xl font-semibold">Risk at 3 years:</h3>
+                                    <p class="">Stroke Mortality Probability (%): {{ risk_3_years|default(0)|round(2) }}</p>
+                                    <div class="interpretation-meter items-center justify-center py-4 text-center">
+                                        {% if risk_3_years is not none %}
+                                        <div
+                                            class="indicator {% if risk_3_years <= 30 %}low-risk{% elif risk_3_years <= 60 %}moderate-risk{% else %}high-risk{% endif %}">
+                                            {% if risk_3_years <= 30 %}Low Risk{% elif risk_3_years <=60 %}Moderate Risk{%
+                                                else %}High Risk{% endif %} </div>
+                                                {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endblock %}
+                </div>
+            </div>
+
+<!-- CSS for explanation text -->
+<style>
+    .explanation-text {
+        display: none;
+    }
+</style>
+
+<!-- JavaScript to show/hide explanation text -->
+<script>
+    function showExplanation(id) {
+        var explanation = document.getElementById(id);
+        explanation.style.display = "block";
+    }
+
+    function hideExplanation(id) {
+        var explanation = document.getElementById(id);
+        explanation.style.display = "none";
+    }
+</script>
+
+<!-- Optional JavaScript -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-U1DAWAznBHeqEIlVSCgzq+c9gqGAJn5c/t99JyeKa9xxaYpSvHU5awsuZVVFIhvj"
+    crossorigin="anonymous"></script>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+
+About.html template	{% extends 'base.html' %}
+
+{% block content %}
+<div class="container p-5">
+    <h2 class="text-4xl font-bold mb-5">About MIST</h2>
+    <p class="text-xl mb-5">
+        MIST represents a cutting-edge machine learning web-based platform that has been intricately crafted to
+        transform the landscape of stroke management and mortality prediction in the context of Malaysia's healthcare.
+        Built upon the foundations of advanced data science and extensive medical knowledge, our platform provides a
+        dependable and all-encompassing solution tailored to the needs of healthcare professionals, researchers, and
+        policymakers committed to improving stroke care and preventive measures.
+    </p>
+
+            <h2  class="text-2xl font-bold mr-4 mt-5">Key Features</h2>
+            <table class="flex justify-center p-4" >
+                <tr>
+                    <td><strong>Precision Predictions:</strong></td>
+                    <td><strong>Informed Decision-Making:</strong></td>
+                </tr>
+                <tr>
+                    <td><img src="{{ url_for('static', filename='images/precise.jpeg') }}"
+                            alt="Precision Predictions Image" style="width: 100px; height: 100px;"></td>
+                    <td><img src="{{ url_for('static', filename='images/decision.jpeg') }}"
+                            alt="Informed Decision-Making Image" style="width: 100px; height: 100px;"></td>
+                </tr>
+                <tr>
+                    <td>&#9656; Harness the power of advanced Support Vector Machine (SVM) modeling to obtain precise
+                        stroke mortality predictions based on vital parameters.</td>
+                    <td>&#9656; Equip clinicians with invaluable insights for personalized patient care, while enabling
+                        researchers to refine their studies with real-world data.</td>
+                </tr>
+                <tr>
+                    <td><strong>Malaysian Population Focus:</strong></td>
+                    <td><strong>Policy Guidance:</strong></td>
+                </tr>
+                <tr>
+                    <td><img src="{{ url_for('static', filename='images/focus.jpeg') }}"
+                            alt="Malaysian Population Focus Image" style="width: 100px; height: 100px;"></td>
+                    <td><img src="{{ url_for('static', filename='images/guide.jpeg') }}" alt="Policy Guidance Image"
+                            style="width: 100px; height: 100px;"></td>
+                </tr>
+                <tr>
+                    <td>&#9656; Tailored specifically for the Malaysian population, MIST delivers the most
+                        representative stroke outcome predictions, ensuring the highest clinical relevance.</td>
+                    <td>&#9656; Empower policymakers and non-communicable disease (NCD) epidemiologists with data-driven
+                        tools to inform and shape effective healthcare policies for stroke prevention.</td>
+                </tr>
+            </table>
+
+    <!-- Additional text starts here -->
+    <h2 class="text-2xl font-bold mb-3">The Dynamic Team Behind MIST</h2>
+    <p class="text-xl italic mb-5">Harnessing Collective Expertise for Transformative Healthcare</p>
+
+    <p class="text-xl mb-5">At MIST, we take pride in the collaborative spirit that underpins our endeavor to advance
+        stroke management and mortality prediction for Malaysia. Our dedicated team is a fusion of talent and knowledge
+        from esteemed institutions, forging a dynamic synergy across universities.</p>
+
+    <h3 class="text-2xl font-bold mb-3">Meet the Visionaries:</h3>
+    <div class="mb-5">
+        <!-- Dr. Che Muhammad Nur Hidayat Che Nawi -->
+        <div class="mb-4">
+            <img src="{{ url_for('static', filename='hidayat.jpeg') }}" alt="Dr. Che Muhammad Nur Hidayat Che Nawi" class="rounded-lg w-40 h-55">
+        </div>
+        <div class="text-xl mb-3">
+            <strong>Dr. Che Muhammad Nur Hidayat Che Nawi</strong><br>
+            Principal Investigator-MMC 70594
+        </div>
+        <div class="text-xl mb-5">
+            Department of Community Medicine, School of Medical Sciences, Universiti Sains Malaysia
+        </div>
+
+        <!-- Professor Dr. Kamarul Imran Musa -->
+        <div class="mb-4">
+            <img src="{{ url_for('static', filename='pkim.jpeg') }}" alt="Professor Dr. Kamarul Imran Musa" class="rounded-lg w-40 h-55">
+        </div>
+        <div class="text-xl mb-3">
+            <strong>Professor Dr. Kamarul Imran Musa</strong><br>
+            Main Supervisor-MMC 34450
+        </div>
+        <div class="text-xl mb-5">
+            Department of Community Medicine, School of Medical Sciences, Universiti Sains Malaysia
+        </div>
+
+        <!-- Dr. Suhaily Mohd Hairon -->
+        <div class="mb-4">
+            <img src="{{ url_for('static', filename='elly.jpeg') }}" alt="Dr. Suhaily Mohd Hairon" class="rounded-lg w-40 h-55">
+        </div>
+        <div class="text-xl mb-3">
+            <strong>Dr. Suhaily Mohd Hairon</strong><br>
+            Co Supervisor-MMC 46733
+        </div>
+        <div class="text-xl mb-5">
+            Department of Community Medicine, School of Medical Sciences, Universiti Sains Malaysia
+        </div>
+
+        <!-- Associate Prof. Dr. Wan Nur Nafisah Wan Yahya -->
+        <div class="mb-4">
+            <img src="{{ url_for('static', filename='wnafisah.jpeg') }}" alt="Dr. Wan Nur Nafisah Wan Yahya" class="rounded-lg w-40 h-55">
+        </div>
+        <div class="text-xl mb-3">
+            <strong>Associate Prof. Dr. Wan Nur Nafisah Wan Yahya</strong><br>
+            Co Supervisor-MMC 45329
+        </div>
+        <div class="text-xl mb-5">
+            Department of Internal Medicine, Universiti Kebangsaan Malaysia Medical Centre (UKMMC)
+        </div>
+
+        <!-- Dr. Wan Asyraf Wan Zaidi -->
+        <div class="mb-4">
+            <img src="{{ url_for('static', filename='wasyraf.jpeg') }}" alt="Dr. Wan Asyraf Wan Zaidi" class="rounded-lg w-40 h-55">
+        </div>
+        <div class="text-xl mb-3">
+            <strong>Dr. Wan Asyraf Wan Zaidi</strong><br>
+            Co Researcher-MMC 50558
+        </div>
+        <div class="text-xl mb-5">
+            Department of Internal Medicine, Universiti Kebangsaan Malaysia Medical Centre (UKMMC)
+        </div>
+
+        <!-- Professor Dr. Mohd Rohaizat Hassan -->
+        <div class="mb-4">
+            <img src="{{ url_for('static', filename='prohaizat.jpeg') }}" alt="Dr. Mohd Rohaizat Hassan" class="rounded-lg w-40 h-55">
+        </div>
+        <div class="text-xl mb-3">
+            <strong>Professor Dr. Mohd Rohaizat Hassan</strong><br>
+            Co Researcher-MMC 35174
+        </div>
+        <div class="text-xl">
+            Department of Community Health, Faculty of Medicine, National University of Malaysia, Kuala Lumpur, Malaysia
+        </div>
+    </div>
+
+
+    <!-- Repeat the above structure for other team members -->
+
+    <div class="flex flex-col justify-center">
+        <h3 class="text-2xl font-bold mb-3">Our Shared Commitment:</h3>
+        <p class="text-xl mb-3">As a team, we share a common commitment to excellence, data-driven innovation, and the
+            betterment of healthcare in Malaysia. This partnership serves as a testament to the belief that great
+            strides in healthcare are best achieved through collective wisdom and collaboration.</p>
+
+        <h3 class="text-2xl font-bold mb-3">Together We Strive:</h3>
+        <p class="text-xl mb-5">Join us on this transformative journey. Together, we strive to elevate stroke care, empower researchers,
+            inform policymakers, and shape a healthier, brighter future for Malaysia.</p>
+    </div>
+    <!-- Additional text ends here -->
+</div>
+{% endblock %}
+Contact.html template	{% extends 'base.html' %}
+
+{% block title %}
+Contact Us - MIST
+{% endblock %}
+
+<div class="flex justify-center">
+    {% block content %}
+
+    <h1 class="text-3xl font-bold p-3 ">Contact Us</h1>
+    <p class="text-2xl font-light p-3">Your Gateway to Inquiries and Collaborations</p>
+
+    <p class="text-xl p-3">If you have any questions, inquiries, or are interested in exploring future collaborations with us at MIST,
+        we welcome your correspondence. Please feel free to reach out to us via email at:</p>
+
+    <p class="text-xl mt-10 p-3 "><strong>Email:</strong> <a href="mailto:drchehidayat@gmail.com" class="text-blue-400">drchehidayat@gmail.com</a></p>
+
+    <p class="text-xl p-3">Our team is committed to prompt and professional responses, and we are eager to assist you with any information
+        or partnership opportunities you may seek.</p>
+
+    <p class="text-xl p-3">Thank you for considering MIST as your partner in advancing stroke management and prediction in Malaysia. We
+        look forward to hearing from you.</p>
+    {% endblock %}
+</div>
+
